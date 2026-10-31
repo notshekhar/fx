@@ -1,0 +1,59 @@
+name: release
+
+on:
+    push:
+        tags: ["v*"]
+
+permissions:
+    contents: write
+
+jobs:
+    build:
+        strategy:
+            fail-fast: false
+            matrix:
+                include:
+                    # darwin builds on macOS so the binaries can be re-signed.
+                    - target: bun-darwin-arm64
+                      runner: macos-14
+                    - target: bun-darwin-x64
+                      runner: macos-14
+                    - target: bun-linux-x64
+                      runner: ubuntu-latest
+                    - target: bun-linux-arm64
+                      runner: ubuntu-latest
+        runs-on: ${{ matrix.runner }}
+        steps:
+            - uses: actions/checkout@v4
+              with:
+                  submodules: recursive
+            - uses: oven-sh/setup-bun@v2
+              with:
+                  bun-version: 1.4.2
+            - run: bun install --frozen-lockfile
+            - run: bun run test
+            - run: bun scripts/build.ts ${{ matrix.target }}
+            - name: Package
+              run: |
+                  name="fx-${{ matrix.target }}"
+                  name="${name#fx-bun-}"
+                  cd dist
+                  tar -czf "fx-${name}.tar.gz" "fx-${name}"
+                  shasum -a 256 "fx-${name}.tar.gz" > "fx-${name}.tar.gz.sha256"
+            - uses: actions/upload-artifact@v4
+              with:
+                  name: ${{ matrix.target }}
+                  path: dist/*.tar.gz*
+
+    publish:
+        needs: build
+        runs-on: ubuntu-latest
+        steps:
+            - uses: actions/download-artifact@v4
+              with:
+                  path: assets
+                  merge-multiple: true
+            - name: Create the release
+              env:
+                  GH_TOKEN: ${{ github.token }}
+              run: gh release create "${{ github.ref_name }}" assets/* --repo "${{ github.repository }}" --title "${{ github.ref_name }}" --generate-notes

@@ -1,0 +1,31 @@
+{
+    "name": "fx",
+    "version": "0.1.0",
+    "description": "fx \u2014 a read-only debugging agent for the repos, databases, clusters and telemetry you register with it.",
+    "license": "MIT",
+    "private": true,
+    "type": "module",
+    "bin": {
+        "fx": "./src/main.ts"
+    },
+    "scripts": {
+        "postinstall": "bun scripts/install-loop.ts",
+        "dev": "bun src/main.ts",
+        "typecheck": "tsc --noEmit -p tsconfig.json",
+        "test": "bun run typecheck && bun test ./test",
+        "build": "bun scripts/build.ts",
+        "format": "prettier --write ."
+    },
+    "dependencies": {
+        "yaml": "^2.9.0"
+    },
+    "devDependencies": {
+        "@types/bun": "latest",
+        "@types/node": "^26.1.1",
+        "typescript": "6.0.3",
+        "prettier": "^3.9.5"
+    },
+    "engines": {
+        "bun": ">=1.4.0"
+    }
+}

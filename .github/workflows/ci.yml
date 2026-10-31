@@ -1,0 +1,27 @@
+name: ci
+
+on:
+    push:
+        branches: [main]
+    pull_request:
+
+jobs:
+    test:
+        strategy:
+            fail-fast: false
+            matrix:
+                # macOS runs the bash sandbox tests (sandbox-exec ships with the
+                # OS); Linux runs them only where bubblewrap is installed.
+                os: [macos-14, ubuntu-latest]
+        runs-on: ${{ matrix.os }}
+        steps:
+            - uses: actions/checkout@v4
+              with:
+                  submodules: recursive
+            - uses: oven-sh/setup-bun@v2
+              with:
+                  bun-version: 1.4.2
+            - run: bun install --frozen-lockfile
+            - run: bun run test
+            - run: bun run build
+            - run: ./dist/fx-* --version
