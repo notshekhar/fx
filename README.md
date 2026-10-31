@@ -31,6 +31,22 @@ appears only when something of its kind is registered.
 
 ## Install
 
+```bash
+curl -fsSL https://raw.githubusercontent.com/notshekhar/fx/main/install.sh | bash
+```
+
+That puts one binary in `~/.local/bin` (`FX_INSTALL_DIR` to change it) after
+checking its sha256. Pin a release with `| bash -s -- --version v0.1.1`;
+remove it with `| bash -s -- --uninstall`, which leaves `~/.fx` alone.
+
+```bash
+fx upgrade           # the newest release, in place
+fx upgrade --check   # only say whether there is one
+fx upgrade --to v0.1.0
+```
+
+### From source
+
 fx runs loop from source, as a git submodule, so loop's improvements arrive by
 moving the submodule — nothing is copied.
 

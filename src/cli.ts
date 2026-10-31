@@ -9,6 +9,7 @@ import { repoDir } from "./repos";
 import { formatRegistry, parseKind, syncRepositories } from "./sources";
 import { startFx } from "./start";
 import { startAutoSync, syncTracked } from "./sync";
+import { runUpgrade } from "./upgrade";
 
 const HELP = `fx ${pkg.version} — a read-only debugging agent over what you register with it
 
@@ -19,6 +20,7 @@ usage:
   fx delete <kind> <name>    unregister one thing
   fx sync [repository]       clone or update repositories
   fx prompt                  edit the system prompt in $EDITOR
+  fx upgrade                 install the newest release (--check, --to <version>, --force)
   fx version
 
 kinds: repository, database, kubernetes, telemetry, mcpserver, environment, httprequest
@@ -35,6 +37,12 @@ const VALUE_FLAGS: Record<string, string> = {
     "--file": "file",
     "--model": "model",
     "--session": "session",
+    "--to": "to",
+};
+
+const SWITCHES: Record<string, string> = {
+    "--check": "check",
+    "--force": "force",
 };
 
 export function parseArgs(argv: readonly string[]): Args {
@@ -46,7 +54,8 @@ export function parseArgs(argv: readonly string[]): Args {
             const value = argv[++i];
             if (value === undefined) throw new Error(`${arg} needs a value`);
             args.flags[flag] = value;
-        } else if (arg === "--help" || arg === "-h") args.command = "help";
+        } else if (SWITCHES[arg]) args.flags[SWITCHES[arg]] = "true";
+        else if (arg === "--help" || arg === "-h") args.command = "help";
         else if (arg === "--version" || arg === "-v") args.command = "version";
         else if (arg.startsWith("-")) throw new Error(`unknown flag ${arg}`);
         else if (args.command === undefined) args.command = arg;
@@ -94,6 +103,10 @@ export async function main(argv: readonly string[]): Promise<void> {
     const args = parseArgs(argv);
     if (args.command === "help") return console.log(HELP);
     if (args.command === "version") return console.log(pkg.version);
+    if (args.command === "upgrade") {
+        const { check, force, to } = args.flags;
+        return runUpgrade({ check: check === "true", force: force === "true", to }, (line) => console.log(line));
+    }
 
     startFx();
     switch (args.command) {
