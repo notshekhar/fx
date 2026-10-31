@@ -21,6 +21,11 @@ jobs:
             - uses: oven-sh/setup-bun@v2
               with:
                   bun-version: 1.4.2
+            # grep uses ripgrep from PATH; without it, loop downloads one
+            # mid-test, and that download is what flaked on a runner.
+            - name: Install ripgrep
+              run: |
+                  if command -v brew >/dev/null; then brew install ripgrep; else sudo apt-get install -y ripgrep; fi
             - run: bun install --frozen-lockfile
             - run: bun run test
             - run: bun run build
