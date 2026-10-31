@@ -16,10 +16,13 @@ export interface RunOptions {
 }
 
 export async function run(argv: string[], opts: RunOptions): Promise<RunResult> {
-    if (!Bun.which(argv[0]!)) throw new Error(`${argv[0]} is not installed or not on PATH`);
+    const env = { ...process.env, ...opts.env };
+    // Looked up on the PATH the program will run with; Bun.which alone reads
+    // the PATH the process started with.
+    if (!Bun.which(argv[0]!, { PATH: env.PATH ?? "" })) throw new Error(`${argv[0]} is not installed or not on PATH`);
     const proc = Bun.spawn(argv, {
         cwd: opts.cwd,
-        env: { ...process.env, ...opts.env },
+        env,
         stdin: "ignore",
         stdout: "pipe",
         stderr: "pipe",
