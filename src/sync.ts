@@ -48,12 +48,34 @@ function recordSync(name: string, status: SyncStatus): void {
 
 const inFlight = new Map<string, Promise<string>>();
 
+/**
+ * Clones and fetches allowed at once. drover gives every repository its own
+ * worker; a cap keeps that property — one huge repository never holds up the
+ * rest — without fifty clones fighting over one link and one disk.
+ */
+const MAX_PARALLEL_SYNCS = 6;
+let activeSyncs = 0;
+const waitingForSlot: (() => void)[] = [];
+
+/** Run `work` once a slot is free. A finished sync hands its slot straight to the next in line, so the cap is never overshot. */
+async function withSyncSlot<T>(work: () => Promise<T>): Promise<T> {
+    if (activeSyncs < MAX_PARALLEL_SYNCS) activeSyncs++;
+    else await new Promise<void>((resolve) => waitingForSlot.push(resolve));
+    try {
+        return await work();
+    } finally {
+        const next = waitingForSlot.shift();
+        if (next) next();
+        else activeSyncs--;
+    }
+}
+
 /** Sync one repository, joining a sync of it already under way. Resolves to the commit. */
 export function syncTracked(repo: Repository, signal?: AbortSignal): Promise<string> {
     const name = repo.metadata.name;
     const running = inFlight.get(name);
     if (running) return running;
-    const sync = syncRepo(repo, signal)
+    const sync = withSyncSlot(() => syncRepo(repo, signal))
         .then(
             (commit) => {
                 recordSync(name, { at: new Date().toISOString(), commit });
@@ -92,13 +114,13 @@ export function isDue(repo: Repository, status: SyncStatus | undefined, nowMs: n
     return nowMs - Date.parse(status.at) >= parseDuration(repo.spec.refreshInterval) * 1000;
 }
 
-/** One pass of the schedule: sync, one at a time, every repository that is due. Failures are recorded, not thrown. */
+/** One pass of the schedule: start every repository that is due and not already syncing, at most MAX_PARALLEL_SYNCS at a time. Failures are recorded, not thrown. */
 export async function syncDueRepositories(nowMs = Date.now()): Promise<void> {
     const status = readSyncStatus();
-    for (const repo of objectsOf(loadRegistry(), "Repository")) {
-        if (!isDue(repo, status[repo.metadata.name], nowMs)) continue;
-        await syncTracked(repo).catch(() => {});
-    }
+    const due = objectsOf(loadRegistry(), "Repository").filter(
+        (repo) => !inFlight.has(repo.metadata.name) && isDue(repo, status[repo.metadata.name], nowMs),
+    );
+    await Promise.all(due.map((repo) => syncTracked(repo).catch(() => {})));
 }
 
 /**
@@ -107,12 +129,9 @@ export async function syncDueRepositories(nowMs = Date.now()): Promise<void> {
  * is picked up. Nothing is printed: it runs under the chat screen.
  */
 export function startAutoSync(): void {
-    let running = false;
-    const pass = () => {
-        if (running) return;
-        running = true;
-        void syncDueRepositories().finally(() => (running = false));
-    };
+    // No pass waits for the last: a repository already syncing is skipped, so
+    // one long clone never delays a repository saved after it.
+    const pass = () => void syncDueRepositories();
     pass();
     setInterval(pass, TICK_MS).unref();
 }

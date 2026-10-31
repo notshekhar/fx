@@ -86,6 +86,24 @@ describe("auto sync", () => {
         expect(readSyncStatus().gone?.error).toBeTruthy();
     });
 
+    test("a clone carries only the registered branch, as drover's does", async () => {
+        git(work, "push", "-q", "origin", "main:feature-a", "main:feature-b");
+        await syncTracked(repo("single"));
+        const remote = git(repoDir("single"), "branch", "-r");
+        expect(remote).toContain("origin/main");
+        expect(remote).not.toContain("feature-");
+    });
+
+    test("many repositories sync together, and every one lands", async () => {
+        const names = Array.from({ length: 9 }, (_, i) => `many-${i}`);
+        writeFileSync(
+            join(fxHome(), "many.yaml"),
+            names.map((n) => yamlDoc("Repository", n, `url: ${origin}`)).join("---\n"),
+        );
+        await syncDueRepositories();
+        for (const name of names) expect(readSyncStatus()[name]?.commit).toBeTruthy();
+    });
+
     test("two syncs of one repository share one run", async () => {
         const [a, b] = [syncTracked(repo("api")), syncTracked(repo("api"))];
         expect(a).toBe(b);

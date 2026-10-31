@@ -200,7 +200,7 @@ way, fx appends what is registered so the model knows what exists.
 ## Upgrading loop
 
 ```bash
-git -C vendor/loop fetch --tags && git -C vendor/loop checkout v0.21.32
+git -C vendor/loop fetch --tags && git -C vendor/loop checkout v0.21.33
 bun install && bun run test
 ```
 

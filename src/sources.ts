@@ -67,15 +67,18 @@ function detail(object: FxObject): string {
     }
 }
 
-/** Sync the named repository, or all of them; each result is reported as it lands. */
+/** Sync the named repository, or all of them in parallel; each result is reported as it lands. */
 export async function syncRepositories(name: string | undefined, report: (line: string) => void): Promise<void> {
     const repos = objectsOf(loadRegistry(), "Repository").filter((r) => !name || r.metadata.name === name);
     if (name && repos.length === 0) throw new Error(`no repository named ${name}`);
-    for (const repo of repos) {
-        try {
-            report(`${repo.metadata.name}: ${await syncTracked(repo)}`);
-        } catch (err) {
-            report(`${repo.metadata.name}: failed — ${(err as Error).message}`);
-        }
-    }
+    // All at once, under syncTracked's cap; each is reported as it lands.
+    await Promise.all(
+        repos.map(async (repo) => {
+            try {
+                report(`${repo.metadata.name}: ${await syncTracked(repo)}`);
+            } catch (err) {
+                report(`${repo.metadata.name}: failed — ${(err as Error).message}`);
+            }
+        }),
+    );
 }
