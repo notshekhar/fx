@@ -49,7 +49,7 @@ describe("fx cli", () => {
         writeFileSync(file, yamlDoc("Telemetry", "logs", "type: splunk\nurl: http://x"));
         const result = fx("apply", "-f", file);
         expect(result.code).toBe(1);
-        expect(result.err).toContain("bad.yaml (document 1): spec.type");
+        expect(result.err).toContain("bad.yaml (document 1, logs): type must be loki or prometheus or tempo or jaeger");
         expect(existsSync(join(fxHome(), "bad.yaml"))).toBe(false);
     });
 

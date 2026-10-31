@@ -111,6 +111,42 @@ describe("api tools", () => {
         ).toEqual({});
     });
 
+    test("a drover request — long dotted name, header list, `query`, defaults — works as written", async () => {
+        const name = "workforce.partners-get-partner-by-phone-number-v2";
+        const doc = yamlDoc(
+            "HTTPRequest",
+            name,
+            [
+                'url: "{{baseUrl}}/v1/partners/{phone}"',
+                "environments: [stage]",
+                "headers:",
+                "  - name: Authorization",
+                '    value: "Bearer {{token}}"',
+                "pathParams:",
+                "  - name: phone",
+                "query:",
+                "  - name: page",
+                '    default: "1"',
+                "  - name: fields",
+            ].join("\n"),
+        ).replace("apiVersion: fx/v1", "apiVersion: drover/v1");
+        const parsed = parseObjects(doc, "pronto.yaml");
+        expect(parsed.problems).toEqual([]);
+        const { environments } = load();
+        const tools = createApiTools(
+            parsed.objects.filter((o): o is Request => o.kind === "HTTPRequest"),
+            environments,
+        );
+
+        seen = [];
+        await call(tools.api_call, { request: name, params: { phone: "9999" } });
+        expect(seen[0]!.url.pathname).toBe("/v1/partners/9999");
+        expect(seen[0]!.url.searchParams.get("page")).toBe("1");
+        expect(seen[0]!.url.searchParams.has("fields")).toBe(false);
+        expect(seen[0]!.auth).toBe("Bearer tok-123");
+        expect(await call(tools.api_describe, { request: name })).toContain("page\n      default: 1");
+    });
+
     test("a number for a parameter is taken as its text", async () => {
         seen = [];
         await call(tools().api_call, { request: "get-user", params: { userId: 42 } });
@@ -128,11 +164,11 @@ describe("api tools", () => {
     });
 
     test("a url parameter without a declaration, or a literal secret, does not register", () => {
-        expect(parseObjects(yamlDoc("HTTPRequest", "bad", 'url: "http://x/{id}"'), "a.yaml").problems[0]).toContain(
-            "{id} has no pathParams entry",
-        );
         expect(
-            parseObjects(yamlDoc("Environment", "prod", "secrets:\n  token: hunter2"), "b.yaml").problems[0],
+            parseObjects(yamlDoc("HTTPRequest", "bad", 'url: "http://x/{id}"'), "a.yaml").problems[0]?.message,
+        ).toContain("{id} has no pathParams entry");
+        expect(
+            parseObjects(yamlDoc("Environment", "prod", "secrets:\n  token: hunter2"), "b.yaml").problems[0]?.message,
         ).toContain("a secret is a ${env:VAR} reference");
     });
 });

@@ -7,7 +7,9 @@ import { fxHome } from "./home";
 import { applyFile, deleteObject, loadRegistry } from "./registry/store";
 import { repoDir } from "./repos";
 import { checkAll } from "./health";
-import { formatHealth, formatRegistry, parseKind, syncRepositories } from "./sources";
+import { StatusMonitor } from "./monitor";
+import { formatRegistry, parseKind, syncRepositories } from "./sources";
+import { formatStatus } from "./status-view";
 import { startFx } from "./start";
 import { startAutoSync, syncTracked } from "./sync";
 import { runUpgrade } from "./upgrade";
@@ -97,28 +99,20 @@ async function editPrompt(): Promise<void> {
 
 async function status(kindWord: string | undefined): Promise<void> {
     const registry = loadRegistry();
-    const results = await checkAll(registry, kindWord ? parseKind(kindWord) : undefined);
-    console.log(formatHealth(results, registry.problems));
+    const only = kindWord ? parseKind(kindWord) : undefined;
+    const results = await checkAll(registry, only);
+    console.log(formatStatus(results, registry.problems, Boolean(only)));
     // Exited outright: loop's database test leaves its own timeout running,
     // and the exit code is what makes `fx status` usable from a script.
     process.exit(results.some((r) => r.state === "failing") || registry.problems.length ? 1 : 0);
 }
 
-/**
- * Printed before the chat opens, where it stays visible above it: a document
- * fx skipped would otherwise only show up as a repository that never syncs.
- */
-function reportProblems(problems: readonly string[]): void {
-    if (problems.length === 0) return;
-    console.error(`fx skipped ${problems.length} thing(s) in ${fxHome()}:`);
-    for (const problem of problems) console.error(`  ! ${problem}`);
-    console.error("  fix the file and fx picks it up on your next message; `/status` shows what works\n");
-}
-
 async function chat(args: Args): Promise<void> {
     const { runInteractive } = await import("@notshekhar/loop/interactive");
-    reportProblems(loadRegistry().problems);
+    const monitor = new StatusMonitor();
+    startFx(monitor);
     startAutoSync();
+    monitor.start();
     await runInteractive({ cwd: fxHome(), modelId: args.flags.model, sessionId: args.flags.session });
 }
 
@@ -131,10 +125,9 @@ export async function main(argv: readonly string[]): Promise<void> {
         return runUpgrade({ check: check === "true", force: force === "true", to }, (line) => console.log(line));
     }
 
+    if (args.command === undefined) return chat(args);
     startFx();
     switch (args.command) {
-        case undefined:
-            return chat(args);
         case "apply":
             return apply(args.flags.file);
         case "get":

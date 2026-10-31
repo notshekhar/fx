@@ -66,15 +66,25 @@ export function chooseEnvironment(
 
 function requireParams(request: Request, params: Record<string, string>): void {
     for (const p of [...request.spec.pathParams, ...request.spec.queryParams]) {
-        if (p.required && params[p.name] === undefined) throw new Error(`${request.metadata.name} needs ${p.name}`);
+        if (p.required && p.default === undefined && params[p.name] === undefined)
+            throw new Error(`${request.metadata.name} needs ${p.name}`);
     }
     const known = new Set([...request.spec.pathParams, ...request.spec.queryParams].map((p) => p.name));
     const unknown = Object.keys(params).filter((name) => !known.has(name));
     if (unknown.length) throw new Error(`${request.metadata.name} has no parameter ${unknown.join(", ")}`);
 }
 
-export function buildUrl(request: Request, environment: Environment | undefined, params: Record<string, string>): URL {
-    requireParams(request, params);
+/** The caller's values over each parameter's default. */
+function withDefaults(request: Request, params: Record<string, string>): Record<string, string> {
+    const defaults = [...request.spec.pathParams, ...request.spec.queryParams].flatMap((p) =>
+        p.default === undefined ? [] : [[p.name, p.default] as const],
+    );
+    return { ...Object.fromEntries(defaults), ...params };
+}
+
+export function buildUrl(request: Request, environment: Environment | undefined, given: Record<string, string>): URL {
+    requireParams(request, given);
+    const params = withDefaults(request, given);
     const withParams = request.spec.url.replace(URL_PARAM, (_, name: string) => encodeURIComponent(params[name] ?? ""));
     const url = new URL(expand(withParams, environment));
     for (const p of request.spec.queryParams) {

@@ -67,7 +67,9 @@ already signed in, so is fx. Otherwise run `/login` inside fx.
 ## Register what it may see
 
 Every `*.yaml` in `~/.fx` is read before each message, so saving a file is
-enough. `fx apply -f` checks a file and copies it in.
+enough. `fx apply -f` checks a file and copies it in. drover's files work as
+they are — `apiVersion: drover/v1`, its list of headers, `query:` — and
+`config.yaml` is left alone as settings, as in drover.
 
 ```yaml
 apiVersion: fx/v1
@@ -139,8 +141,24 @@ spec:
 ```
 
 While fx is open it keeps the clones fresh on their own: a missing one is
-cloned at start, and each is reset to its remote every `refreshInterval`.
-`/sources` shows each one's commit and when it last synced, or why it failed.
+cloned within seconds of being saved, and each is reset to its remote every
+`refreshInterval`.
+
+## Is everything working?
+
+Under the welcome banner, a summary of every source stays current while fx is
+open — a saved file or a finished sync shows within seconds, and databases,
+clusters, telemetry and MCP servers are re-checked every minute:
+
+```
+ sources  ✓ 57 repos  ·  ✗ 1 of 2 databases failing  ·  ✓ 79 APIs  ·  ! 2 skipped
+          checked 02:55 PM · /status for details
+```
+
+`/status` (or `fx status`) checks everything now and says why anything fails.
+A long section shows its working entries as a count — `/status apis` lists
+each one — and documents fx could not use are grouped by file and by what is
+wrong with them. `fx status` exits 1 when something fails, for scripts.
 
 ```bash
 fx apply -f sources.yaml   # clones repositories as it goes
@@ -182,7 +200,7 @@ way, fx appends what is registered so the model knows what exists.
 ## Upgrading loop
 
 ```bash
-git -C vendor/loop fetch --tags && git -C vendor/loop checkout v0.21.31
+git -C vendor/loop fetch --tags && git -C vendor/loop checkout v0.21.32
 bun install && bun run test
 ```
 

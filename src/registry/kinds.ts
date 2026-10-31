@@ -24,9 +24,21 @@ export const DROVER_ONLY_KINDS: Record<string, string> = {
     DocumentStore: "fx has no document stores; it writes only to its scratchpad",
 };
 
+/** drover's names fit: up to 63 characters, with one dot for its namespacing (`api.get-user`). */
 const name = z
     .string()
-    .regex(/^[a-z0-9][a-z0-9_-]{0,31}$/i, "a name is 1-32 letters, digits, - or _, starting with a letter or digit");
+    .regex(
+        /^(?=.{1,63}$)[a-z0-9][a-z0-9_-]*(\.[a-z0-9_-]+)?$/i,
+        "a name is 1-63 letters, digits, - or _, starting with a letter or digit, with at most one dot",
+    );
+
+/** A Database's name is loop's sql connection id, which is stricter. */
+const databaseName = z
+    .string()
+    .regex(
+        /^[a-z0-9][a-z0-9_-]{0,31}$/i,
+        "a Database name is 1-32 letters, digits, - or _, starting with a letter or digit (it is the sql tool's connection id)",
+    );
 
 /** `${env:VAR}` is allowed anywhere a secret goes, and resolved when it is used. */
 const secret = z.string();
@@ -90,12 +102,32 @@ const environment = z.object({
     secrets: z.record(z.string(), z.string().regex(SECRET_REFERENCE, "a secret is a ${env:VAR} reference")).default({}),
 });
 
+/** A query parameter is optional unless it says otherwise, as in drover; a path parameter is always required. */
 const param = z.object({
     name: z.string().min(1),
     description: z.string().optional(),
-    required: z.boolean().default(true),
+    required: z.boolean().default(false),
     example: z.string().optional(),
+    /** Sent when the caller leaves the parameter out. */
+    default: z.string().optional(),
 });
+
+const pathParam = param.transform((p) => ({ ...p, required: true }));
+
+/** fx's map, or drover's list of `{name, value}` — the same headers either way. */
+const headers = z.union([
+    z.record(z.string(), z.string()),
+    z
+        .array(z.object({ name: z.string().min(1), value: z.string(), description: z.string().optional() }))
+        .transform((list) => Object.fromEntries(list.map((h) => [h.name, h.value]))),
+]);
+
+/** drover calls the query parameters `query`. */
+function acceptDroverQuery(spec: unknown): unknown {
+    if (typeof spec !== "object" || spec === null || !("query" in spec) || "queryParams" in spec) return spec;
+    const { query, ...rest } = spec as Record<string, unknown>;
+    return { ...rest, queryParams: query };
+}
 
 /** `{name}` in a url: a value the caller supplies. `{{name}}` is an environment's, so it is excluded. */
 export const URL_PARAM = /(?<!\{)\{([A-Za-z_][A-Za-z0-9_]*)\}(?!\})/g;
@@ -108,43 +140,46 @@ export function urlParams(url: string): string[] {
  * One callable request, drover's shape. Only GET is ever offered to the
  * model; other methods may be stored but fx never runs them.
  */
-const httpRequest = z
-    .object({
-        description: z.string().optional(),
-        method: z.enum(["GET", "POST", "PUT", "PATCH", "DELETE", "HEAD"]).default("GET"),
-        url: z.string().min(1),
-        headers: z.record(z.string(), z.string()).optional(),
-        environments: z.array(z.string()).optional(),
-        defaultEnvironment: z.string().optional(),
-        pathParams: z.array(param).default([]),
-        queryParams: z.array(param).default([]),
-    })
-    .superRefine((spec, ctx) => {
-        // Checked here so an offered request is always honest about what it needs.
-        const inUrl = new Set(urlParams(spec.url));
-        const declared = new Set(spec.pathParams.map((p) => p.name));
-        for (const name of inUrl) {
-            if (!declared.has(name))
-                ctx.addIssue({ code: "custom", path: ["url"], message: `{${name}} has no pathParams entry` });
-        }
-        for (const name of declared) {
-            if (!inUrl.has(name))
-                ctx.addIssue({ code: "custom", path: ["pathParams"], message: `${name} is not in the url` });
-        }
-    });
+const httpRequest = z.preprocess(
+    acceptDroverQuery,
+    z
+        .object({
+            description: z.string().optional(),
+            method: z.enum(["GET", "POST", "PUT", "PATCH", "DELETE", "HEAD"]).default("GET"),
+            url: z.string().min(1),
+            headers: headers.optional(),
+            environments: z.array(z.string()).optional(),
+            defaultEnvironment: z.string().optional(),
+            pathParams: z.array(pathParam).default([]),
+            queryParams: z.array(param).default([]),
+        })
+        .superRefine((spec, ctx) => {
+            // Checked here so an offered request is always honest about what it needs.
+            const inUrl = new Set(urlParams(spec.url));
+            const declared = new Set(spec.pathParams.map((p) => p.name));
+            for (const name of inUrl) {
+                if (!declared.has(name))
+                    ctx.addIssue({ code: "custom", path: ["url"], message: `{${name}} has no pathParams entry` });
+            }
+            for (const name of declared) {
+                if (!inUrl.has(name))
+                    ctx.addIssue({ code: "custom", path: ["pathParams"], message: `${name} is not in the url` });
+            }
+        }),
+);
 
-function kind<K extends string, S extends z.ZodType>(kind: K, spec: S) {
+function kind<K extends string, S extends z.ZodType>(kind: K, spec: S, nameRule: z.ZodString = name) {
     return z.object({
         apiVersion: z.enum(API_VERSIONS),
         kind: z.literal(kind),
-        metadata: z.object({ name }),
+        metadata: z.object({ name: nameRule }),
         spec,
     });
 }
 
 export const fxObject = z.discriminatedUnion("kind", [
     kind("Repository", repository),
-    kind("Database", database),
+    kind("Database", database, databaseName),
     kind("Kubernetes", kubernetes),
     kind("Telemetry", telemetry),
     kind("McpServer", mcpServer),

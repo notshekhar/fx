@@ -5,7 +5,8 @@ import { promptFile } from "./home";
 import { DEFAULT_PROMPT } from "./prompt";
 import { loadRegistry } from "./registry/store";
 import { checkAll } from "./health";
-import { formatHealth, formatRegistry, parseKind, syncRepositories } from "./sources";
+import { formatRegistry, parseKind, syncRepositories } from "./sources";
+import { formatStatus } from "./status-view";
 
 /** Write the built-in prompt out, so there is something to edit. */
 export function ensurePromptFile(): string {
@@ -26,10 +27,8 @@ export const FX_COMMANDS: readonly SlashCommand[] = [
         handler: async (ctx, args) => {
             try {
                 const registry = loadRegistry();
-                ctx.emit(
-                    "help",
-                    formatHealth(await checkAll(registry, args ? parseKind(args) : undefined), registry.problems),
-                );
+                const only = args ? parseKind(args) : undefined;
+                ctx.emit("help", formatStatus(await checkAll(registry, only), registry.problems, Boolean(only)));
             } catch (err) {
                 ctx.emit("error", (err as Error).message);
             }

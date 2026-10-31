@@ -8,43 +8,37 @@ import { basename, join, resolve } from "node:path";
 import { parseAllDocuments } from "yaml";
 import { fxHome } from "../home";
 import { DROVER_ONLY_KINDS, fxObject, type FxObject, type Kind, type ObjectOf } from "./kinds";
+import { describeIssue, problemLine, type Problem } from "./problems";
+
+export type { Problem } from "./problems";
 
 export interface Registry {
     objects: FxObject[];
-    /** One line per document that could not be used, naming its file. */
-    problems: string[];
+    /** Every document that could not be used. */
+    problems: Problem[];
 }
 
 interface Parsed {
     objects: FxObject[];
-    problems: string[];
+    problems: Problem[];
 }
 
 export function parseObjects(text: string, source: string): Parsed {
     const parsed: Parsed = { objects: [], problems: [] };
     parseAllDocuments(text).forEach((doc, index) => {
-        const where = `${source} (document ${index + 1})`;
-        if (doc.errors.length > 0) {
-            parsed.problems.push(`${where}: ${doc.errors[0]!.message}`);
-            return;
-        }
-        const value = doc.toJS();
+        const problem = (message: string, name?: string) =>
+            parsed.problems.push({ file: source, document: index + 1, ...(name && { name }), message });
+        if (doc.errors.length > 0) return problem(`not valid YAML: ${doc.errors[0]!.message.split("\n")[0]}`);
+        const value = doc.toJS() as { kind?: string; metadata?: { name?: unknown } } | null | undefined;
         if (value === null || value === undefined) return;
-        const instead = DROVER_ONLY_KINDS[(value as { kind?: string }).kind ?? ""];
-        if (instead) {
-            parsed.problems.push(`${where}: ${value.kind} is drover's; ${instead}`);
-            return;
-        }
+        const name = typeof value.metadata?.name === "string" ? value.metadata.name : undefined;
+        const instead = DROVER_ONLY_KINDS[value.kind ?? ""];
+        if (instead) return problem(`${value.kind} is drover's; ${instead}`, name);
         const result = fxObject.safeParse(value);
         if (result.success) parsed.objects.push(result.data);
-        else parsed.problems.push(`${where}: ${describeIssue(result.error.issues[0])}`);
+        else problem(describeIssue(result.error.issues[0]), name);
     });
     return parsed;
-}
-
-function describeIssue(issue: { path: PropertyKey[]; message: string } | undefined): string {
-    if (!issue) return "invalid";
-    return issue.path.length ? `${issue.path.join(".")}: ${issue.message}` : issue.message;
 }
 
 /** As in drover, config.yaml is settings, not objects — so a drover config copied in is not reported as broken. */
@@ -66,18 +60,20 @@ interface Entry {
 }
 
 /** Every valid object with the file it came from; a repeated kind/name keeps the first. */
-function loadEntries(): { entries: Entry[]; problems: string[] } {
+function loadEntries(): { entries: Entry[]; problems: Problem[] } {
     const entries: Entry[] = [];
-    const problems: string[] = [];
+    const problems: Problem[] = [];
     for (const file of registryFiles()) {
         const parsed = parseObjects(readFileSync(file, "utf8"), basename(file));
         problems.push(...parsed.problems);
         for (const object of parsed.objects) {
             const first = entries.find((e) => key(e.object) === key(object));
             if (first)
-                problems.push(
-                    `${basename(file)}: ${key(object)} is already defined in ${basename(first.file)}; ignored`,
-                );
+                problems.push({
+                    file: basename(file),
+                    name: object.metadata.name,
+                    message: `${object.kind} ${object.metadata.name} is already defined in ${basename(first.file)}; ignored`,
+                });
             else entries.push({ object, file });
         }
     }
@@ -101,7 +97,7 @@ export function objectsOf<K extends Kind>(registry: Registry, kind: K): ObjectOf
 export function applyFile(path: string): FxObject[] {
     const text = readFileSync(path, "utf8");
     const parsed = parseObjects(text, basename(path));
-    if (parsed.problems.length > 0) throw new Error(parsed.problems.join("\n"));
+    if (parsed.problems.length > 0) throw new Error(parsed.problems.map(problemLine).join("\n"));
     if (parsed.objects.length === 0) throw new Error(`${basename(path)} holds no fx objects`);
 
     const destination = join(fxHome(), basename(path));

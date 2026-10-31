@@ -14,8 +14,12 @@ import { describeSync } from "./sync";
 import { probeTelemetry } from "./telemetry/probe";
 import { kubectlFor } from "./tools/kubernetes";
 
-/** `off`: registered but deliberately unused, such as a request fx will not send. */
-export type HealthState = "ok" | "failing" | "off";
+/**
+ * `pending`: on its way, such as a repository still cloning or a source not
+ * checked yet. `off`: registered but deliberately unused, such as a request
+ * fx will not send.
+ */
+export type HealthState = "ok" | "failing" | "pending" | "off";
 
 export interface Health {
     kind: Kind;
@@ -36,6 +40,10 @@ export const CHECK_TIMEOUT_MS = 5_000;
 
 const LIVE_KINDS: ReadonlySet<Kind> = new Set(["Database", "Kubernetes", "Telemetry", "McpServer"]);
 
+export function isLiveKind(kind: Kind): boolean {
+    return LIVE_KINDS.has(kind);
+}
+
 const ok = (detail: string): Verdict => ({ state: "ok", detail });
 
 export function checkAll(registry: Registry, only?: Kind): Promise<Health[]> {
@@ -51,11 +59,31 @@ async function checkOne(object: FxObject, environments: readonly Environment[]):
     try {
         verdict = await withDeadline(check(object, environments, signal), signal);
     } catch (err) {
-        const detail = signal.aborted ? `no answer in ${CHECK_TIMEOUT_MS / 1000}s` : (err as Error).message;
+        const detail = signal.aborted ? `no answer in ${CHECK_TIMEOUT_MS / 1000}s` : explain(err as Error, object);
         verdict = { state: "failing", detail: detail.trim().split("\n")[0]! };
     }
     const ms = LIVE_KINDS.has(object.kind) ? Math.round(performance.now() - started) : undefined;
     return { kind: object.kind, name: object.metadata.name, ...verdict, ...(ms !== undefined && { ms }) };
+}
+
+/** Where a check dials, for saying which host could not be reached. */
+function endpointOf(object: FxObject): string | undefined {
+    if (object.kind === "Telemetry" || object.kind === "McpServer") return new URL(object.spec.url).host;
+    if (object.kind === "Database") return `${object.spec.host}:${object.spec.port}`;
+    return undefined;
+}
+
+/** Bun's connection errors ("Unable to connect. Is the computer able to access the url?") say neither what nor where. */
+function explain(error: Error & { code?: string }, object: FxObject): string {
+    const endpoint = endpointOf(object);
+    if (!endpoint) return error.message;
+    if (error.code === "ConnectionRefused" || /ECONNREFUSED|Unable to connect/.test(error.message))
+        return `nothing is listening at ${endpoint}`;
+    if (error.code === "ENOTFOUND" || /ENOTFOUND|getaddrinfo|DNS/i.test(error.message))
+        return `${endpoint.split(":")[0]} does not resolve — check the name, or your VPN`;
+    // Bun's SQL client says only this, with no code to tell refused from unreachable.
+    if (error.message === "Failed to connect") return `cannot connect to ${endpoint}`;
+    return error.message;
 }
 
 /** Some checks (loop's database test) do not take a signal; this stops waiting for them all the same. */
@@ -86,8 +114,7 @@ function check(object: FxObject, environments: readonly Environment[], signal: A
 }
 
 function checkRepository(repo: ObjectOf<"Repository">): Verdict {
-    const { ok: synced, detail } = describeSync(repo.metadata.name);
-    return { state: synced ? "ok" : "failing", detail };
+    return describeSync(repo.metadata.name);
 }
 
 async function checkDatabase(db: ObjectOf<"Database">): Promise<Verdict> {
@@ -126,7 +153,8 @@ function checkEnvironment(environment: Environment): Verdict {
     const missing = missingSecrets(environment);
     if (missing.length) return { state: "failing", detail: `not set: ${missing.join(", ")}` };
     const { variables, secrets } = environment.spec;
-    return ok(`${Object.keys(variables).length} variables, ${Object.keys(secrets).length} secrets, all set`);
+    const n = (count: number, word: string) => `${count} ${word}${count === 1 ? "" : "s"}`;
+    return ok(`${n(Object.keys(variables).length, "variable")}, ${n(Object.keys(secrets).length, "secret")}, all set`);
 }
 
 function checkRequest(request: ObjectOf<"HTTPRequest">, environments: readonly Environment[]): Verdict {

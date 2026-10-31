@@ -22,8 +22,12 @@ export interface SyncStatus {
     error?: string;
 }
 
-/** How often the schedule looks for a repository that is due; intervals are minutes, so this is plenty. */
-const TICK_MS = 30_000;
+/**
+ * How often the schedule looks for a repository that is due. Looking reads
+ * only local files, so it can be often — and a repository just saved into
+ * ~/.fx starts cloning within this, not on some later minute.
+ */
+const TICK_MS = 5_000;
 
 function statusFile(): string {
     return join(fxHome(), "sync-status.json");
@@ -65,12 +69,19 @@ export function syncTracked(repo: Repository, signal?: AbortSignal): Promise<str
     return sync;
 }
 
+export interface SyncState {
+    /** `pending`: on its way — syncing now, or registered and not yet tried. */
+    state: "ok" | "failing" | "pending";
+    detail: string;
+}
+
 /** A clone's state in one line: syncing, its commit and when, or why the last sync failed. */
-export function describeSync(name: string, status = readSyncStatus()[name]): { ok: boolean; detail: string } {
-    if (inFlight.has(name)) return { ok: isCloned(name), detail: "syncing now" };
-    if (status?.error) return { ok: false, detail: `sync failed ${ago(status.at)}: ${status.error.split("\n")[0]}` };
-    if (!isCloned(name)) return { ok: false, detail: "not cloned yet" };
-    return { ok: true, detail: status?.commit ? `${status.commit}, synced ${ago(status.at)}` : "cloned" };
+export function describeSync(name: string, status = readSyncStatus()[name]): SyncState {
+    if (inFlight.has(name)) return { state: "pending", detail: isCloned(name) ? "syncing now" : "cloning now" };
+    if (status?.error)
+        return { state: "failing", detail: `sync failed ${ago(status.at)}: ${status.error.split("\n")[0]}` };
+    if (!isCloned(name)) return { state: "pending", detail: "not cloned yet — it will be shortly" };
+    return { state: "ok", detail: status?.commit ? `${status.commit}, synced ${ago(status.at)}` : "cloned" };
 }
 
 /** Missing clones are always due; otherwise once `refreshInterval` has passed since the last attempt. */

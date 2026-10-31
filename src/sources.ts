@@ -2,8 +2,8 @@
  * Things both the CLI and the slash commands do with the registry: list it
  * and sync its repositories.
  */
-import type { Health, HealthState } from "./health";
 import { KINDS, type FxObject, type Kind } from "./registry/kinds";
+import { problemLine } from "./registry/problems";
 import { loadRegistry, objectsOf, type Registry } from "./registry/store";
 import { describeSync, syncTracked } from "./sync";
 
@@ -21,6 +21,13 @@ const KIND_WORDS: Record<string, Kind> = {
     telemetry: "Telemetry",
     mcpserver: "McpServer",
     mcpservers: "McpServer",
+    // The short words /status shows in its hints.
+    repos: "Repository",
+    clusters: "Kubernetes",
+    mcp: "McpServer",
+    apis: "HTTPRequest",
+    api: "HTTPRequest",
+    requests: "HTTPRequest",
 };
 
 export function parseKind(word: string): Kind {
@@ -38,7 +45,7 @@ export function formatRegistry(registry: Registry, only?: Kind): string {
         for (const object of objects) lines.push(`  ${object.metadata.name.padEnd(20)} ${detail(object)}`);
     }
     if (lines.length === 0) lines.push("nothing registered — add sources with `fx apply -f <file>.yaml`");
-    for (const problem of registry.problems) lines.push(`! ${problem}`);
+    for (const problem of registry.problems) lines.push(`! ${problemLine(problem)}`);
     return lines.join("\n");
 }
 
@@ -58,32 +65,6 @@ function detail(object: FxObject): string {
         case "HTTPRequest":
             return `${object.spec.method} ${object.spec.url}${object.spec.method === "GET" ? "" : "  (not offered: only GET is)"}`;
     }
-}
-
-const MARKS: Record<HealthState, string> = { ok: "✓", failing: "✗", off: "·" };
-
-/** `fx status`: one line per thing, grouped by kind, then a count. */
-export function formatHealth(results: readonly Health[], problems: readonly string[]): string {
-    const lines: string[] = [];
-    for (const kind of KINDS) {
-        const ofKind = results.filter((r) => r.kind === kind);
-        if (ofKind.length === 0) continue;
-        lines.push(`${kind}:`);
-        for (const r of ofKind) {
-            const took = r.ms === undefined ? "" : `  ${r.ms}ms`;
-            lines.push(`  ${MARKS[r.state]} ${r.name.padEnd(20)} ${r.detail}${took}`);
-        }
-    }
-    if (lines.length === 0 && problems.length === 0)
-        return "nothing registered — add sources with `fx apply -f <file>.yaml`";
-    for (const problem of problems) lines.push(`! ${problem}`);
-    const failing = results.filter((r) => r.state === "failing").length;
-    const skipped = problems.length ? `, ${problems.length} skipped` : "";
-    lines.push(
-        "",
-        `${failing ? `${failing} of ${results.length} failing` : `all ${results.length} working`}${skipped}`,
-    );
-    return lines.join("\n");
 }
 
 /** Sync the named repository, or all of them; each result is reported as it lands. */

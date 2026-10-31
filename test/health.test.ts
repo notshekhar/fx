@@ -9,7 +9,7 @@ import { chmodSync, mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { CHECK_TIMEOUT_MS, checkAll, type Health } from "../src/health";
 import { parseObjects } from "../src/registry/store";
-import { formatHealth } from "../src/sources";
+import { formatStatus } from "../src/status-view";
 import { useFxHome, yamlDoc } from "./helpers";
 
 const fxHome = useFxHome();
@@ -93,9 +93,9 @@ describe("fx status", () => {
 
     test("a failure says why, in one line", () => {
         expect(result("metrics")).toMatchObject({ state: "failing", detail: expect.stringContaining("HTTP 503") });
-        expect(result("orders").state).toBe("failing");
+        expect(result("orders")).toMatchObject({ state: "failing", detail: "cannot connect to 127.0.0.1:1" });
         expect(result("orders").detail).not.toContain("\n");
-        expect(result("api")).toMatchObject({ state: "failing", detail: "not cloned yet" });
+        expect(result("api")).toMatchObject({ state: "pending", detail: "not cloned yet — it will be shortly" });
     });
 
     test("a host that never answers fails at the deadline without holding up the rest", () => {
@@ -114,16 +114,11 @@ describe("fx status", () => {
         expect(result("drop-user")).toMatchObject({ state: "off" });
     });
 
-    test("the report groups by kind and counts failures", () => {
-        const text = formatHealth(results, []);
-        expect(text).toContain("Telemetry:\n  ✓ logs");
+    test("the report leads with the counts and groups by kind", () => {
+        const text = formatStatus(results, []);
+        expect(text.split("\n")[0]).toBe("fx status   ✓ 6 working   ✗ 5 failing   ◌ 1 on the way");
+        expect(text).toContain("Repositories  1\n  ◌ api");
+        expect(text).toContain("Telemetry  3\n  ✓ logs");
         expect(text).toContain("  · drop-user");
-        expect(text.split("\n").at(-1)).toBe(`${results.filter((r) => r.state === "failing").length} of 13 failing`);
     });
-});
-
-test("a skipped document counts against the summary", () => {
-    expect(formatHealth([], ["a.yaml: bad"])).toBe("! a.yaml: bad\n\nall 0 working, 1 skipped");
-    const one: Health = { kind: "Repository", name: "api", state: "ok", detail: "abc" };
-    expect(formatHealth([one], ["a.yaml: bad"]).split("\n").at(-1)).toBe("all 1 working, 1 skipped");
 });

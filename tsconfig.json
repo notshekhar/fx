@@ -20,7 +20,8 @@
             "@notshekhar/loop-core": ["./vendor/loop/packages/core/src/index.ts"],
             "@notshekhar/loop-tui": ["./vendor/loop/packages/tui/src/index.ts"],
             "@notshekhar/loop-sandbox": ["./vendor/loop/packages/sandbox/src/index.ts"],
-            "@notshekhar/loop/interactive": ["./vendor/loop/packages/cli/src/interactive/app.ts"]
+            "@notshekhar/loop/interactive": ["./vendor/loop/packages/cli/src/interactive/app.ts"],
+            "@notshekhar/loop/ui": ["./vendor/loop/packages/cli/src/interactive/ui/text.ts"]
         }
     },
     // loop's ambient declarations (its build-time virtual modules) come along.

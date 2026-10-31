@@ -70,6 +70,7 @@ function describeParam(param: Param, required: boolean): string {
         `  ${param.name}${required ? " (required)" : ""}`,
         param.description && `      ${param.description}`,
         param.example && `      example: ${param.example}`,
+        param.default && `      default: ${param.default}`,
     ]
         .filter(Boolean)
         .join("\n");
@@ -77,7 +78,9 @@ function describeParam(param: Param, required: boolean): string {
 
 function describeRequest(request: Request): string {
     const { spec } = request;
-    const required = [...spec.pathParams, ...spec.queryParams.filter((q) => q.required)].map((p) => p.name);
+    const required = [...spec.pathParams, ...spec.queryParams]
+        .filter((p) => p.required && p.default === undefined)
+        .map((p) => p.name);
     const environments = environmentsOf(request);
     const params = required.length ? `, "params": {${required.map((n) => `"${n}": "..."`).join(", ")}}` : "";
     return [

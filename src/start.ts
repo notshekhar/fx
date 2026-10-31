@@ -5,18 +5,19 @@
  */
 import { mkdirSync } from "node:fs";
 import { join } from "node:path";
-import { envName, setAppProfile, trustForSession } from "@notshekhar/loop-core";
+import { envName, setAppProfile, trustForSession, type WelcomePanel } from "@notshekhar/loop-core";
 import { syncDatasources } from "./datasources";
 import { ensureHome, fxHome, scratchpadDir } from "./home";
 import { createFxProfile } from "./profile";
 import { loadRegistry } from "./registry/store";
 import { installBuiltinSkills } from "./skills";
 
-export function startFx(): void {
+/** `welcomePanel` is the chat's live summary; commands that print and exit have none. */
+export function startFx(welcomePanel?: WelcomePanel): void {
     ensureHome();
     installBuiltinSkills();
     const registry = loadRegistry();
-    setAppProfile(createFxProfile(registry));
+    setAppProfile({ ...createFxProfile(registry), ...(welcomePanel && { welcomePanel }) });
     syncDatasources(registry);
     // Skills load only in a trusted folder, and ~/.fx is fx's own.
     trustForSession(fxHome());
