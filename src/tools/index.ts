@@ -13,7 +13,7 @@ import { loadRegistry, objectsOf } from "../registry/store";
 import { createScratchpadBash } from "./bash";
 import { createFileTools } from "./files";
 import { createGitTools } from "./git";
-import { createHttpTool } from "./http";
+import { createApiTools } from "./http";
 import { createKubernetesTool } from "./kubernetes";
 import { createTelemetryTool } from "./telemetry";
 
@@ -23,7 +23,6 @@ export function createFxTools(ctx: ToolContext): Record<string, Tool> {
     const clusters = objectsOf(registry, "Kubernetes");
     const telemetry = objectsOf(registry, "Telemetry");
     const signal = ctx.abortSignal;
-    const http = createHttpTool(objectsOf(registry, "HTTPRequest"), objectsOf(registry, "Environment"), signal);
 
     return {
         ...createFileTools(ctx),
@@ -31,7 +30,7 @@ export function createFxTools(ctx: ToolContext): Record<string, Tool> {
         ...(clusters.length > 0 ? { kubernetes: createKubernetesTool(clusters, signal) } : {}),
         ...(telemetry.length > 0 ? { telemetry: createTelemetryTool(telemetry, signal) } : {}),
         ...(objectsOf(registry, "Database").length > 0 ? { sql: createSqlTool({ abortSignal: signal }) } : {}),
-        ...(http ? { http_request: http } : {}),
+        ...createApiTools(objectsOf(registry, "HTTPRequest"), objectsOf(registry, "Environment"), signal),
         bash: createScratchpadBash(ctx),
     };
 }

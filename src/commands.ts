@@ -1,10 +1,11 @@
-/** Slash commands fx adds to loop's: /sources, /sync and /prompt. */
+/** Slash commands fx adds to loop's: /sources, /status, /sync and /prompt. */
 import { existsSync, unlinkSync, writeFileSync } from "node:fs";
 import type { SlashCommand } from "@notshekhar/loop-core";
 import { promptFile } from "./home";
 import { DEFAULT_PROMPT } from "./prompt";
 import { loadRegistry } from "./registry/store";
-import { formatRegistry, syncRepositories } from "./sources";
+import { checkAll } from "./health";
+import { formatHealth, formatRegistry, parseKind, syncRepositories } from "./sources";
 
 /** Write the built-in prompt out, so there is something to edit. */
 export function ensurePromptFile(): string {
@@ -18,6 +19,21 @@ export const FX_COMMANDS: readonly SlashCommand[] = [
         name: "sources",
         description: "List what fx can see: repositories, databases, clusters, telemetry, MCP servers",
         handler: (ctx) => ctx.emit("help", formatRegistry(loadRegistry())),
+    },
+    {
+        name: "status",
+        description: "Check that every registered source works right now: /status [kind]",
+        handler: async (ctx, args) => {
+            try {
+                const registry = loadRegistry();
+                ctx.emit(
+                    "help",
+                    formatHealth(await checkAll(registry, args ? parseKind(args) : undefined), registry.problems),
+                );
+            } catch (err) {
+                ctx.emit("error", (err as Error).message);
+            }
+        },
     },
     {
         name: "sync",

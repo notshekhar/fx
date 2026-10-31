@@ -35,6 +35,12 @@ export function refusedKubectlArgs(args: readonly string[]): string | undefined 
     return undefined;
 }
 
+/** kubectl aimed at the registered kubeconfig and context, before any verb. */
+export function kubectlFor(cluster: Cluster): string[] {
+    const kubeconfig = cluster.spec.kubeconfig ? ["--kubeconfig", cluster.spec.kubeconfig] : [];
+    return ["kubectl", ...kubeconfig, "--context", cluster.spec.context];
+}
+
 function namespaceArgs(cluster: Cluster, namespace: string | undefined): string[] {
     const allowed = cluster.spec.namespaces;
     if (!allowed) return namespace ? ["--namespace", namespace] : [];
@@ -67,16 +73,7 @@ export function createKubernetesTool(clusters: readonly Cluster[], fallbackSigna
             if (!cluster) throw new Error(`no cluster named ${name}`);
             const refused = refusedKubectlArgs(args);
             if (refused) throw new Error(refused);
-            const kubeconfig = cluster.spec.kubeconfig ? ["--kubeconfig", cluster.spec.kubeconfig] : [];
-            const argv = [
-                "kubectl",
-                ...kubeconfig,
-                "--context",
-                cluster.spec.context,
-                ...namespaceArgs(cluster, namespace),
-                verb,
-                ...args,
-            ];
+            const argv = [...kubectlFor(cluster), ...namespaceArgs(cluster, namespace), verb, ...args];
             return capped(
                 await runOk(argv, { timeoutMs: KUBECTL_TIMEOUT_MS, signal: options?.abortSignal ?? fallbackSignal }),
             );

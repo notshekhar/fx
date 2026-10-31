@@ -7,7 +7,7 @@
  */
 import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
-import { parseDuration } from "./duration";
+import { ago, parseDuration } from "./duration";
 import { fxHome } from "./home";
 import type { ObjectOf } from "./registry/kinds";
 import { loadRegistry, objectsOf } from "./registry/store";
@@ -63,6 +63,14 @@ export function syncTracked(repo: Repository, signal?: AbortSignal): Promise<str
         .finally(() => inFlight.delete(name));
     inFlight.set(name, sync);
     return sync;
+}
+
+/** A clone's state in one line: syncing, its commit and when, or why the last sync failed. */
+export function describeSync(name: string, status = readSyncStatus()[name]): { ok: boolean; detail: string } {
+    if (inFlight.has(name)) return { ok: isCloned(name), detail: "syncing now" };
+    if (status?.error) return { ok: false, detail: `sync failed ${ago(status.at)}: ${status.error.split("\n")[0]}` };
+    if (!isCloned(name)) return { ok: false, detail: "not cloned yet" };
+    return { ok: true, detail: status?.commit ? `${status.commit}, synced ${ago(status.at)}` : "cloned" };
 }
 
 /** Missing clones are always due; otherwise once `refreshInterval` has passed since the last attempt. */

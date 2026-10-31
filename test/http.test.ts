@@ -1,9 +1,9 @@
-/** Registered HTTP requests, against a fake API that records what it was sent. */
+/** api_list, api_describe and api_call, against a fake API that records what it was sent. */
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import type { Server } from "bun";
 import { parseObjects } from "../src/registry/store";
 import type { Environment, Request } from "../src/http/request";
-import { createHttpTool } from "../src/tools/http";
+import { createApiTools } from "../src/tools/http";
 import { call, yamlDoc } from "./helpers";
 
 let server: Server<undefined>;
@@ -36,7 +36,12 @@ function load(): { requests: Request[]; environments: Environment[] } {
         yamlDoc(
             "HTTPRequest",
             "get-user",
-            `description: Fetch one user\nurl: "{{baseUrl}}/v1/users/{userId}"\nheaders:\n  Authorization: "Bearer {{token}}"\nenvironments: [stage]\npathParams:\n  - name: userId\nqueryParams:\n  - name: fields\n    required: false`,
+            `description: Fetch one user by their account id\nurl: "{{baseUrl}}/v1/users/{userId}"\nheaders:\n  Authorization: "Bearer {{token}}"\nenvironments: [stage]\npathParams:\n  - name: userId\n    description: the account that owns the session\n    example: usr_1a2b\nqueryParams:\n  - name: fields\n    required: false`,
+        ),
+        yamlDoc(
+            "HTTPRequest",
+            "list-issues",
+            `description: Open issues on a repo\nurl: "{{baseUrl}}/v1/issues"\nenvironments: [stage]`,
         ),
         yamlDoc(
             "HTTPRequest",
@@ -52,11 +57,37 @@ function load(): { requests: Request[]; environments: Environment[] } {
     };
 }
 
-describe("http_request", () => {
+function tools() {
+    const { requests, environments } = load();
+    return createApiTools(requests, environments);
+}
+
+describe("api tools", () => {
+    test("api_list finds a request by name, description, parameter or abbreviation, and shows environments", async () => {
+        const { api_list } = tools();
+        const all = await call(api_list, {});
+        expect(all).toStartWith("2 request(s):");
+        expect(all).not.toContain("delete-user");
+        expect(all).toContain("token (set)");
+        expect(await call(api_list, { search: "issues" })).toContain('1 of 2 request(s) match "issues"');
+        expect(await call(api_list, { search: "account owns" })).toContain("get-user");
+        expect(await call(api_list, { search: "lsiss" })).toContain("list-issues");
+        expect(await call(api_list, { search: "users stage" })).not.toContain("list-issues");
+        expect(await call(api_list, { search: "invoices" })).toStartWith('No request matches "invoices"');
+    });
+
+    test("api_describe shows parameters and how to call, but header names only", async () => {
+        const out = await call(tools().api_describe, { request: "get-user" });
+        expect(out).toContain("userId (required)\n      the account that owns the session\n      example: usr_1a2b");
+        expect(out).toContain("Headers sent: Authorization");
+        expect(out).not.toContain("tok-123");
+        expect(out).not.toContain("{{token}}");
+        expect(out).toContain('api_call { "request": "get-user", "params": {"userId": "..."} }');
+    });
+
     test("fills variables, secrets and parameters, and returns the response", async () => {
-        const { requests, environments } = load();
         seen = [];
-        const out = await call(createHttpTool(requests, environments), {
+        const out = await call(tools().api_call, {
             request: "get-user",
             params: { userId: "usr 1/2", fields: "name" },
         });
@@ -69,23 +100,26 @@ describe("http_request", () => {
 
     test("only GET requests are offered", async () => {
         const { requests, environments } = load();
-        const tool = createHttpTool(requests, environments)!;
-        expect((tool as { description: string }).description).not.toContain("delete-user");
-        await expect(call(tool, { request: "delete-user", params: { id: "1" } })).rejects.toThrow(
+        await expect(call(tools().api_call, { request: "delete-user", params: { id: "1" } })).rejects.toThrow(
             "no GET request named",
         );
         expect(
-            createHttpTool(
+            createApiTools(
                 requests.filter((r) => r.spec.method !== "GET"),
                 environments,
             ),
-        ).toBeUndefined();
+        ).toEqual({});
+    });
+
+    test("a number for a parameter is taken as its text", async () => {
+        seen = [];
+        await call(tools().api_call, { request: "get-user", params: { userId: 42 } });
+        expect(seen[0]!.url.pathname).toBe("/v1/users/42");
     });
 
     test("a missing or unknown parameter is refused before anything is sent", async () => {
-        const { requests, environments } = load();
         seen = [];
-        const tool = createHttpTool(requests, environments);
+        const tool = tools().api_call;
         await expect(call(tool, { request: "get-user", params: {} })).rejects.toThrow("needs userId");
         await expect(call(tool, { request: "get-user", params: { userId: "1", token: "x" } })).rejects.toThrow(
             "has no parameter token",

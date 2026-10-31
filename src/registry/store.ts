@@ -7,7 +7,7 @@ import { existsSync, readdirSync, readFileSync, unlinkSync, writeFileSync } from
 import { basename, join, resolve } from "node:path";
 import { parseAllDocuments } from "yaml";
 import { fxHome } from "../home";
-import { fxObject, type FxObject, type Kind, type ObjectOf } from "./kinds";
+import { DROVER_ONLY_KINDS, fxObject, type FxObject, type Kind, type ObjectOf } from "./kinds";
 
 export interface Registry {
     objects: FxObject[];
@@ -30,6 +30,11 @@ export function parseObjects(text: string, source: string): Parsed {
         }
         const value = doc.toJS();
         if (value === null || value === undefined) return;
+        const instead = DROVER_ONLY_KINDS[(value as { kind?: string }).kind ?? ""];
+        if (instead) {
+            parsed.problems.push(`${where}: ${value.kind} is drover's; ${instead}`);
+            return;
+        }
         const result = fxObject.safeParse(value);
         if (result.success) parsed.objects.push(result.data);
         else parsed.problems.push(`${where}: ${describeIssue(result.error.issues[0])}`);
@@ -42,10 +47,13 @@ function describeIssue(issue: { path: PropertyKey[]; message: string } | undefin
     return issue.path.length ? `${issue.path.join(".")}: ${issue.message}` : issue.message;
 }
 
+/** As in drover, config.yaml is settings, not objects — so a drover config copied in is not reported as broken. */
+const SETTINGS_FILE = "config.yaml";
+
 function registryFiles(): string[] {
     if (!existsSync(fxHome())) return [];
     return readdirSync(fxHome())
-        .filter((f) => f.endsWith(".yaml") || f.endsWith(".yml"))
+        .filter((f) => (f.endsWith(".yaml") || f.endsWith(".yml")) && f !== SETTINGS_FILE)
         .sort()
         .map((f) => join(fxHome(), f));
 }

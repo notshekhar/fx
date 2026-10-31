@@ -13,18 +13,18 @@ can touch.
 
 ## What it can do
 
-| tool                      | what it reaches                                                                                                                                          |
-| ------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `read` `ls` `grep` `find` | fx's clones of your registered repositories, plain files and plain ripgrep — nothing outside them, symlinks included                                     |
-| `git`                     | read-only history in those clones: log, show, diff, blame, …                                                                                             |
-| `sync_repo`               | clone a registered repository, or reset fx's clone to the remote                                                                                         |
-| `pull_request`            | fetch a PR into fx's clone (as `refs/fx/pr/<n>`) and summarise it                                                                                        |
-| `sql`                     | read-only queries against registered databases (loop's guard: a statement check, then a rolled-back `READ ONLY` transaction)                             |
-| `kubernetes`              | `get` `describe` `logs` `top` `events` … on registered contexts, limited to their namespaces if you set them                                             |
-| `telemetry`               | Loki (LogQL), Prometheus (PromQL), Tempo (trace ids, TraceQL), Jaeger (trace ids, services)                                                              |
-| `http_request`            | your registered API calls, GET only — the model fills parameters, never URLs or credentials                                                              |
-| `bash`                    | an OS sandbox that writes only to `~/.fx/scratchpad`, has no network, and cannot read your home directory beyond `~/.fx` and the programs on your `PATH` |
-| MCP servers               | remote ones you register, such as CubeAPM                                                                                                                |
+| tool                                 | what it reaches                                                                                                                                          |
+| ------------------------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `read` `ls` `grep` `find`            | fx's clones of your registered repositories, plain files and plain ripgrep — nothing outside them, symlinks included                                     |
+| `git`                                | read-only history in those clones: log, show, diff, blame, …                                                                                             |
+| `sync_repo`                          | clone a registered repository, or reset fx's clone to the remote                                                                                         |
+| `pull_request`                       | fetch a PR into fx's clone (as `refs/fx/pr/<n>`) and summarise it                                                                                        |
+| `sql`                                | read-only queries against registered databases (loop's guard: a statement check, then a rolled-back `READ ONLY` transaction)                             |
+| `kubernetes`                         | `get` `describe` `logs` `top` `events` … on registered contexts, limited to their namespaces if you set them                                             |
+| `telemetry`                          | Loki (LogQL), Prometheus (PromQL), Tempo (trace ids, TraceQL), Jaeger (trace ids, services)                                                              |
+| `api_list` `api_describe` `api_call` | your registered API calls, as in drover: fuzzy-search them, see one in full, call it — GET only; the model fills parameters, never URLs or credentials   |
+| `bash`                               | an OS sandbox that writes only to `~/.fx/scratchpad`, has no network, and cannot read your home directory beyond `~/.fx` and the programs on your `PATH` |
+| MCP servers                          | remote ones you register, such as CubeAPM                                                                                                                |
 
 There is no edit or write tool, no sub-agents and no agent personas. A tool
 appears only when something of its kind is registered.

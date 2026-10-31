@@ -36,6 +36,18 @@ function expand(template: string, env: Environment | undefined): string {
         });
 }
 
+/** The secrets an environment refers to that are not set in fx's environment. */
+export function missingSecrets(environment: Environment): string[] {
+    return Object.values(environment.spec.secrets).filter((reference) => {
+        try {
+            fromProcess(reference);
+            return false;
+        } catch {
+            return true;
+        }
+    });
+}
+
 /** The environment this call runs in: the one asked for, the request's default, or its only one. */
 export function chooseEnvironment(
     request: Request,
@@ -71,6 +83,21 @@ export function buildUrl(request: Request, environment: Environment | undefined,
     return url;
 }
 
+function expandHeaders(request: Request, environment: Environment | undefined): Record<string, string> {
+    return Object.fromEntries(
+        Object.entries(request.spec.headers ?? {}).map(([name, value]) => [name, expand(value, environment)]),
+    );
+}
+
+/**
+ * Where a request would go, with every environment value and secret it needs
+ * resolved — but nothing sent, since the parameters are the model's to give.
+ */
+export function resolveOrigin(request: Request, environment: Environment | undefined): string {
+    expandHeaders(request, environment);
+    return new URL(expand(request.spec.url.replace(URL_PARAM, "x"), environment)).origin;
+}
+
 /** Run a GET request. Anything else is refused: fx reads, it never writes. */
 export async function callRequest(
     request: Request,
@@ -81,9 +108,7 @@ export async function callRequest(
     if (request.spec.method !== "GET")
         throw new Error(`${request.metadata.name} is a ${request.spec.method}; fx only makes GET requests`);
     const url = buildUrl(request, environment, params);
-    const headers = Object.fromEntries(
-        Object.entries(request.spec.headers ?? {}).map(([name, value]) => [name, expand(value, environment)]),
-    );
+    const headers = expandHeaders(request, environment);
     const timeout = AbortSignal.timeout(HTTP_TIMEOUT_MS);
     const response = await fetch(url, { headers, signal: signal ? AbortSignal.any([signal, timeout]) : timeout });
     const body = await response.text();

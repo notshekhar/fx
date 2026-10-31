@@ -14,6 +14,16 @@ import { DURATION } from "../duration";
 
 export const API_VERSION = "fx/v1";
 
+/** drover's files are accepted as they are: its Repository, Environment and HTTPRequest are fx's shapes too. */
+const API_VERSIONS = [API_VERSION, "drover/v1"] as const;
+
+/** drover kinds fx has no equivalent of, with what to do instead — so a copied drover file says why, not just "invalid". */
+export const DROVER_ONLY_KINDS: Record<string, string> = {
+    SQLConnection:
+        "write it as a Database (type, host, port, database, user, password) — fx keeps the password a ${env:VAR} reference, which one url cannot be",
+    DocumentStore: "fx has no document stores; it writes only to its scratchpad",
+};
+
 const name = z
     .string()
     .regex(/^[a-z0-9][a-z0-9_-]{0,31}$/i, "a name is 1-32 letters, digits, - or _, starting with a letter or digit");
@@ -125,7 +135,7 @@ const httpRequest = z
 
 function kind<K extends string, S extends z.ZodType>(kind: K, spec: S) {
     return z.object({
-        apiVersion: z.literal(API_VERSION),
+        apiVersion: z.enum(API_VERSIONS),
         kind: z.literal(kind),
         metadata: z.object({ name }),
         spec,

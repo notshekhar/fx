@@ -33,9 +33,21 @@ function describeSources(registry: Registry): string {
     ];
     if (registry.objects.length === 0)
         lines.push("  (none — the user registers sources with `fx apply -f <file>.yaml`)");
-    for (const object of registry.objects)
+    for (const object of registry.objects) {
+        if (object.kind === "HTTPRequest" || object.kind === "Environment") continue;
         lines.push(`  - ${object.kind} ${object.metadata.name}: ${summarise(object)}`);
+    }
+    const apis = describeApis(registry);
+    if (apis) lines.push(apis);
     return lines.join("\n");
+}
+
+/** One line however many there are: the requests themselves are found with api_list. */
+function describeApis(registry: Registry): string | undefined {
+    const requests = registry.objects.filter((o) => o.kind === "HTTPRequest" && o.spec.method === "GET").length;
+    if (requests === 0) return undefined;
+    const environments = registry.objects.filter((o) => o.kind === "Environment").length;
+    return `  - APIs: ${requests} GET request(s) in ${environments} environment(s) — find them with api_list`;
 }
 
 function summarise(object: Registry["objects"][number]): string {
@@ -51,11 +63,8 @@ function summarise(object: Registry["objects"][number]): string {
         case "McpServer":
             return `MCP server ${object.spec.url}`;
         case "Environment":
-            return `environment for http requests`;
         case "HTTPRequest":
-            return object.spec.method === "GET"
-                ? `${object.spec.description ?? object.spec.url} (http_request tool)`
-                : `${object.spec.method}, not callable: fx only makes GET requests`;
+            return "listed by api_list";
     }
 }
 

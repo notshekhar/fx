@@ -3,6 +3,14 @@ const UNIT_SECONDS = { s: 1, m: 60, h: 3600, d: 86400 } as const;
 
 export const DURATION = /^(\d+)([smhd])$/;
 
+/** "just now", "4m ago", "3h ago", "2d ago". */
+export function ago(iso: string, nowMs = Date.now()): string {
+    const minutes = Math.round((nowMs - Date.parse(iso)) / 60_000);
+    if (minutes < 1) return "just now";
+    if (minutes < 60) return `${minutes}m ago`;
+    return minutes < 48 * 60 ? `${Math.round(minutes / 60)}h ago` : `${Math.round(minutes / 1440)}d ago`;
+}
+
 export function parseDuration(text: string): number {
     const match = DURATION.exec(text.trim());
     if (!match) throw new Error(`${text}: use a duration like 15m, 6h or 2d`);

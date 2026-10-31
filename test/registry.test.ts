@@ -69,3 +69,28 @@ describe("registry", () => {
         expect(deleteObject("Repository", "keep")).toBe(false);
     });
 });
+
+describe("drover files", () => {
+    const drover = (kind: string, name: string, spec: string) =>
+        yamlDoc(kind, name, spec).replace("apiVersion: fx/v1", "apiVersion: drover/v1");
+
+    test("a drover file dropped into ~/.fx registers as it is", () => {
+        write(
+            "drover-repos.yaml",
+            drover("Repository", "web", "url: https://example.com/web.git\nrefreshInterval: 5m"),
+        );
+        const registry = loadRegistry();
+        expect(registry.problems.filter((p) => p.includes("drover-repos.yaml"))).toEqual([]);
+        expect(registry.objects.find((o) => o.metadata.name === "web")?.kind).toBe("Repository");
+    });
+
+    test("a drover kind fx does not have says what to write instead", () => {
+        const parsed = parseObjects(drover("SQLConnection", "analytics", "provider: postgres\nurl: ${DB}"), "db.yaml");
+        expect(parsed.problems[0]).toContain("SQLConnection is drover's; write it as a Database");
+    });
+
+    test("config.yaml is settings, never read as objects", () => {
+        write("config.yaml", "current: local\nlisten: 127.0.0.1:7432\n");
+        expect(loadRegistry().problems.filter((p) => p.includes("config.yaml"))).toEqual([]);
+    });
+});
